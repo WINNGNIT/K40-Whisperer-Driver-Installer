@@ -1,6 +1,12 @@
 /*
- * Zadig: Automated Driver Installer for USB devices (GUI version)
- * Copyright (c) 2010-2018 Pete Batard <pete@akeo.ie>
+ * Driver Installer for lasers compatible with K40 Whisperer
+ * Adapted by Scorch http://www.scorchworks.com
+ * This is a modified version of Zadig that has a singular purpose
+ * of installing LibUSB drivers for CH341 chip based laser controllers.
+ *
+ * The original copywrite and license information is provided below:
+ * Zadig: Copyright (c) 2010-2017 Pete Batard <pete@akeo.ie>
+ * For more info, please visit http://libwdi.akeo.ie
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,19 +24,23 @@
 
 const char* about_blurb_format =
 "{\\rtf1\\ansi\n"
-"{\\b\\fs20Zadig - The Automated Driver Installer}\\line\n"
-"\\fs18Version %d.%d (Build %d)\\line\n"
-"\\line\n"
-"Copyright © 2010-2018 Pete Batard / Akeo\\line\n"
+"{\\b\\fs20K40 Windows Driver Installer}\\line\n"
+"\\fs18Version %d.%02d\\line\n"
+"Copyright © 2018 Scorch \\line\n"
 APPLICATION_URL "\\line\n"
 "\\line\n"
-"Report bugs or request enhancements at:\\line\n"
-"https://github.com/pbatard/libwdi/issues\\line\n"
+"This is a modified version of Zadig that has a\\line\n"
+"singular purpose of installing the Libusb-win32\\line\n"
+"drivers for CH341 chip based laser controllers.\\line\n"
 "\\line\n"
 "{\\b\\fs18Additional Copyrights:}}";
 
 const char* additional_copyrights =
 "{\\rtf1\\ansi\n"
+"{Zadig - The Automated Driver Installer}\\line\n"
+"Copyright © 2010-2018 Pete Batard / Akeo\\line\n"
+"https://zadig.akeo.ie" "\\line\n"
+"\\line\n"
 "Windows Driver Installer library, libwdi:\\line\n"
 "Copyright © 2010-2018 by Pete Batard et al.\\line\n"
 "GNU Lesser General Public License (LGPL) v3 or later\\line\n"

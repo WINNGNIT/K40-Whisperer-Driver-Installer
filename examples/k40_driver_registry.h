@@ -1,7 +1,12 @@
 /*
- * Zadig: Automated Driver Installer for USB devices (GUI version)
- * Registry access
- * Copyright © 2012-2017 Pete Batard <pete@akeo.ie>
+ * Driver Installer for lasers compatible with K40 Whisperer
+ * Adapted by Scorch http://www.scorchworks.com
+ * This is a modified version of Zadig that has a singular purpose
+ * of installing LibUSB drivers for CH341 chip based laser controllers.
+ *
+ * The original copywrite and license information is provided below:
+ * Zadig: Copyright (c) 2010-2017 Pete Batard <pete@akeo.ie>
+ * For more info, please visit http://libwdi.akeo.ie
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,7 +23,7 @@
  */
 #include <windows.h>
 #include <stdint.h>
-#include "zadig.h"
+#include "k40_driver.h"
 
 #pragma once
 

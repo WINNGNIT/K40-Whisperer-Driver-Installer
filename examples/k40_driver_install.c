@@ -48,9 +48,9 @@
 
 #include "libwdi.h"
 #include "msapi_utf8.h"
-#include "zadig_resource.h"
-#include "zadig_registry.h"
-#include "zadig.h"
+#include "k40_driver_resource.h"
+#include "k40_driver_registry.h"
+#include "k40_driver.h"
 #include "profile.h"
 #include "stdfn.h"
 

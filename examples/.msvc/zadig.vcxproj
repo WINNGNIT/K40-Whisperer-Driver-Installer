@@ -176,10 +176,10 @@
   <ItemGroup>
     <ClInclude Include="..\..\libwdi\msapi_utf8.h" />
     <ClInclude Include="..\profile.h" />
-    <ClInclude Include="..\zadig_license.h" />
-    <ClInclude Include="..\zadig_registry.h" />
-    <ClInclude Include="..\zadig_resource.h" />
-    <ClInclude Include="..\zadig.h" />
+    <ClInclude Include="..\k40_driver_license.h" />
+    <ClInclude Include="..\k40_driver_registry.h" />
+    <ClInclude Include="..\k40_driver_resource.h" />
+    <ClInclude Include="..\k40_driver.h" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="..\common_controls_and_elevation.manifest" />

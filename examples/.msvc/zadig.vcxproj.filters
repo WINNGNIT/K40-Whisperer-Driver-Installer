@@ -32,16 +32,16 @@
     <ClInclude Include="..\profile.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\zadig_resource.h">
+    <ClInclude Include="..\k40_driver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\zadig.h">
+    <ClInclude Include="..\k40_driver_license.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\zadig_license.h">
+    <ClInclude Include="..\k40_driver_registry.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\zadig_registry.h">
+    <ClInclude Include="..\k40_driver_resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
