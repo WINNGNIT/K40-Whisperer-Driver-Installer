@@ -725,9 +725,9 @@ INT_PTR CALLBACK about_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 		case IDC_ABOUT_LICENSE:
 			DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_LICENSE), hDlg, license_callback);
 			break;
-		case IDC_ABOUT_UPDATES:
-			DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_UPDATE_POLICY), hDlg, UpdateCallback);
-			break;
+		//case IDC_ABOUT_UPDATES:
+		//	DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_UPDATE_POLICY), hDlg, UpdateCallback);
+		//	break;
 		}
 		break;
 	}
@@ -973,46 +973,7 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 
 	switch (message) {
 	case WM_INITDIALOG:
-		set_title_bar_icon(hDlg);
-		center_dialog(hDlg);
-		hFrequency = GetDlgItem(hDlg, IDC_UPDATE_FREQUENCY);
-		hBeta = GetDlgItem(hDlg, IDC_INCLUDE_BETAS);
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, "Disabled"), -1));
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, "Daily (Default)"), 86400));
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, "Weekly"), 604800));
-		IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, "Monthly"), 2629800));
-		freq = ReadRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL);
-		EnableWindow(GetDlgItem(hDlg, IDC_CHECK_NOW), (freq != 0));
-		EnableWindow(hBeta, (freq >= 0));
-		switch(freq) {
-		case -1:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 0));
-			break;
-		case 0:
-		case 86400:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 1));
-			break;
-		case 604800:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 2));
-			break;
-		case 2629800:
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 3));
-			break;
-		default:
-			IGNORE_RETVAL(ComboBox_SetItemData(hFrequency, ComboBox_AddStringU(hFrequency, "Custom"), freq));
-			IGNORE_RETVAL(ComboBox_SetCurSel(hFrequency, 4));
-			break;
-		}
-		IGNORE_RETVAL(ComboBox_AddStringU(hBeta, "Yes"));
-		IGNORE_RETVAL(ComboBox_AddStringU(hBeta, "No"));
-		IGNORE_RETVAL(ComboBox_SetCurSel(hBeta, GetRegistryKeyBool(REGKEY_HKCU, REGKEY_INCLUDE_BETAS)?0:1));
-		hPolicy = GetDlgItem(hDlg, IDC_POLICY);
-		SendMessage(hPolicy, EM_AUTOURLDETECT, 1, 0);
-		safe_sprintf(update_policy_text, sizeof(update_policy_text), update_policy);
-		SendMessageA(hPolicy, EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)update_policy_text);
-		SendMessage(hPolicy, EM_SETSEL, -1, -1);
-		SendMessage(hPolicy, EM_SETEVENTMASK, 0, ENM_LINK);
-		SendMessageA(hPolicy, EM_SETBKGNDCOLOR, 0, (LPARAM)GetSysColor(COLOR_BTNFACE));
+		//update frequency dialog
 		break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
@@ -1020,70 +981,27 @@ INT_PTR CALLBACK UpdateCallback(HWND hDlg, UINT message, WPARAM wParam, LPARAM l
 		case IDCANCEL:
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
-		case IDC_CHECK_NOW:
-			CheckForUpdates(TRUE);
-			return (INT_PTR)TRUE;
-		case IDC_UPDATE_FREQUENCY:
-			if (HIWORD(wParam) != CBN_SELCHANGE)
-				break;
-			freq = (int32_t)ComboBox_GetItemData(hFrequency, ComboBox_GetCurSel(hFrequency));
-			WriteRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL, (DWORD)freq);
-			EnableWindow(hBeta, (freq >= 0));
-			return (INT_PTR)TRUE;
-		case IDC_INCLUDE_BETAS:
-			if (HIWORD(wParam) != CBN_SELCHANGE)
-				break;
-			SetRegistryKeyBool(REGKEY_HKCU, REGKEY_INCLUDE_BETAS, ComboBox_GetCurSel(hBeta) == 0);
-			return (INT_PTR)TRUE;
+		//case IDC_CHECK_NOW:
+		//	CheckForUpdates(TRUE);
+		//	return (INT_PTR)TRUE;
+		//case IDC_UPDATE_FREQUENCY:
+		//	if (HIWORD(wParam) != CBN_SELCHANGE)
+		//		break;
+		//	freq = (int32_t)ComboBox_GetItemData(hFrequency, ComboBox_GetCurSel(hFrequency));
+		//	WriteRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL, (DWORD)freq);
+		//	EnableWindow(hBeta, (freq >= 0));
+		//	return (INT_PTR)TRUE;
+		//case IDC_INCLUDE_BETAS:
+		//	if (HIWORD(wParam) != CBN_SELCHANGE)
+		//		break;
+		//	SetRegistryKeyBool(REGKEY_HKCU, REGKEY_INCLUDE_BETAS, ComboBox_GetCurSel(hBeta) == 0);
+		//	return (INT_PTR)TRUE;
 		}
 		break;
 	}
 	return (INT_PTR)FALSE;
 }
 
-/*
- * Initial update check setup
- */
-BOOL SetUpdateCheck(void)
-{
-	BOOL enable_updates;
-	DWORD commcheck = GetTickCount();
-	notification_info more_info = { IDD_UPDATE_POLICY, UpdateCallback };
-	char filename[MAX_PATH] = "", exename[] = APPLICATION_NAME ".exe";
-	size_t fn_len, exe_len;
-
-	// Test if we have access to the registry. If not, forget it.
-	WriteRegistryKey32(REGKEY_HKCU, REGKEY_COMM_CHECK, commcheck);
-	if (ReadRegistryKey32(REGKEY_HKCU, REGKEY_COMM_CHECK) != commcheck)
-		return FALSE;
-	reg_commcheck = TRUE;
-
-	// If the update interval is not set, this is the first time we run so prompt the user
-	if (ReadRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL) == 0) {
-
-		// Add a hack for people who'd prefer the app not to prompt about update settings on first run.
-		// If the executable is called "<app_name>.exe", without version, we disable the prompt
-		GetModuleFileNameU(NULL, filename, sizeof(filename));
-		fn_len = safe_strlen(filename);
-		exe_len = safe_strlen(exename);
-		if ((fn_len > exe_len) && (safe_stricmp(&filename[fn_len-exe_len], exename) == 0)) {
-			dprintf("Short name used - Disabling initial update policy prompt\n");
-			enable_updates = TRUE;
-		} else {
-			enable_updates = notification(MSG_QUESTION, &more_info, APPLICATION_NAME " update policy",
-				"Do you want to allow " APPLICATION_NAME " to check for application updates online?");
-		}
-		if (!enable_updates) {
-			WriteRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL, -1);
-			return FALSE;
-		}
-		// If the user hasn't set the interval in the dialog, set to default
-		if ( (ReadRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL) == 0) ||
-			 ((ReadRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL) == -1) && enable_updates) )
-			WriteRegistryKey32(REGKEY_HKCU, REGKEY_UPDATE_INTERVAL, 86400);
-	}
-	return TRUE;
-}
 
 static void CreateStaticFont(HDC dc, HFONT* hyperlink_font) {
 	TEXTMETRIC tm;
@@ -1118,134 +1036,16 @@ static INT_PTR CALLBACK subclass_callback(HWND hDlg, UINT message, WPARAM wParam
 	switch (message)
 	{
 	case WM_SETCURSOR:
-		if ((HWND)wParam == GetDlgItem(hDlg, IDC_WEBSITE)) {
-			SetCursor(LoadCursor(NULL, IDC_HAND));
-			return (INT_PTR)TRUE;
-		}
+		//if ((HWND)wParam == GetDlgItem(hDlg, IDC_WEBSITE)) {
+		//	SetCursor(LoadCursor(NULL, IDC_HAND));
+		//	return (INT_PTR)TRUE;
+		//}
 		break;
 	}
 	return CallWindowProc(original_wndproc, hDlg, message, wParam, lParam);
 }
 
-/*
- * New version notification dialog
- */
-INT_PTR CALLBACK new_version_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	int i;
-	HWND hNotes;
-	char tmp[128], cmdline[] = APPLICATION_NAME " /W";
-	static char* filepath = NULL;
-	static int download_status = 0;
-	STARTUPINFOA si;
-	PROCESS_INFORMATION pi;
-	HFONT hyperlink_font = NULL;
-	EXT_DECL(exe_ext, NULL, __VA_GROUP__("*.exe"), __VA_GROUP__("Application"));
 
-	switch (message) {
-	case WM_INITDIALOG:
-		download_status = 0;
-		set_title_bar_icon(hDlg);
-		center_dialog(hDlg);
-		// Subclass the callback so that we can change the cursor
-		original_wndproc = (WNDPROC)SetWindowLongPtr(hDlg, GWLP_WNDPROC, (LONG_PTR)subclass_callback);
-		hNotes = GetDlgItem(hDlg, IDC_RELEASE_NOTES);
-		SendMessage(hNotes, EM_AUTOURLDETECT, 1, 0);
-		SendMessageA(hNotes, EM_SETTEXTEX, (WPARAM)&friggin_microsoft_unicode_amateurs, (LPARAM)update.release_notes);
-		SendMessage(hNotes, EM_SETSEL, -1, -1);
-		SendMessage(hNotes, EM_SETEVENTMASK, 0, ENM_LINK);
-		safe_sprintf(tmp, sizeof(tmp), "Your version: %d.%d (Build %d)",
-			application_version[0], application_version[1], application_version[2]);
-		SetWindowTextU(GetDlgItem(hDlg, IDC_YOUR_VERSION), tmp);
-		safe_sprintf(tmp, sizeof(tmp), "Latest version: %d.%d (Build %d)",
-			update.version[0], update.version[1], update.version[2]);
-		SetWindowTextU(GetDlgItem(hDlg, IDC_LATEST_VERSION), tmp);
-		SetWindowTextU(GetDlgItem(hDlg, IDC_DOWNLOAD_URL), update.download_url);
-		SendMessage(GetDlgItem(hDlg, IDC_PROGRESS), PBM_SETRANGE, 0, (MAX_PROGRESS<<16) & 0xFFFF0000);
-		if (update.download_url == NULL)
-			EnableWindow(GetDlgItem(hDlg, IDC_DOWNLOAD), FALSE);
-		break;
-	case WM_CTLCOLORSTATIC:
-		if ((HWND)lParam != GetDlgItem(hDlg, IDC_WEBSITE))
-			return FALSE;
-		// Change the font for the hyperlink
-		SetBkMode((HDC)wParam, TRANSPARENT);
-		CreateStaticFont((HDC)wParam, &hyperlink_font);
-		SelectObject((HDC)wParam, hyperlink_font);
-		SetTextColor((HDC)wParam, RGB(0,0,125));	// DARK_BLUE
-		return (INT_PTR)CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
-	case WM_COMMAND:
-		switch (LOWORD(wParam)) {
-		case IDCLOSE:
-		case IDCANCEL:
-			if (download_status != 1) {
-				safe_free(filepath);
-				EndDialog(hDlg, LOWORD(wParam));
-			}
-			return (INT_PTR)TRUE;
-		case IDC_WEBSITE:
-			ShellExecuteA(hDlg, "open", APPLICATION_URL, NULL, NULL, SW_SHOWNORMAL);
-			break;
-		case IDC_DOWNLOAD:	// Also doubles as abort and launch function
-			switch(download_status) {
-			case 1:		// Abort
-				download_status = 0;
-				error_code = ERROR_SEVERITY_ERROR|ERROR_CANCELLED;
-				break;
-			case 2:		// Launch newer version and close this one
-				Sleep(1000);	// Add a delay on account of antivirus scanners
-				memset(&si, 0, sizeof(si));
-				memset(&pi, 0, sizeof(pi));
-				si.cb = sizeof(si);
-				if (!CreateProcessU(filepath, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-					print_status(0, TRUE, "Failed to launch new application");
-					dprintf("Failed to launch new application: %s\n", WindowsErrorString());
-				} else {
-					print_status(0, FALSE, "Launching new application...");
-					PostMessage(hDlg, WM_COMMAND, (WPARAM)IDCLOSE, 0);
-					PostMessage(hMainDialog, WM_CLOSE, 0, 0);
-				}
-				break;
-			default:	// Download
-				if (update.download_url == NULL) {
-					print_status(0, TRUE, "Could not get download URL\n");
-					break;
-				}
-				for (i=(int)strlen(update.download_url); (i>0)&&(update.download_url[i]!='/'); i--);
-				exe_ext.filename = PathFindFileNameU(update.download_url);
-				filepath = FileDialog(TRUE, app_dir, &exe_ext, OFN_NOCHANGEDIR);
-				if (filepath == NULL) {
-					print_status(0, TRUE, "Could not get save path\n");
-					break;
-				}
-				DownloadFileThreaded(update.download_url, filepath, hDlg);
-				break;
-			}
-			return (INT_PTR)TRUE;
-		}
-		break;
-	case UM_DOWNLOAD_INIT:
-		error_code = 0;
-		download_status = 1;
-		SetWindowTextU(GetDlgItem(hDlg, IDC_DOWNLOAD), "Abort");
-		return (INT_PTR)TRUE;
-	case UM_DOWNLOAD_EXIT:
-		if (wParam) {
-			SetWindowTextU(GetDlgItem(hDlg, IDC_DOWNLOAD), "Launch");
-			download_status = 2;
-		} else {
-			SetWindowTextU(GetDlgItem(hDlg, IDC_DOWNLOAD), "Download");
-			download_status = 0;
-		}
-		return (INT_PTR)TRUE;
-	}
-	return (INT_PTR)FALSE;
-}
-
-void download_new_version(void)
-{
-	DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_NEW_VERSION), hMainDialog, new_version_callback);
-}
 
 void set_title_bar_icon(HWND hDlg)
 {

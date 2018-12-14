@@ -1,6 +1,11 @@
 /*
- * Zadig: Automated Driver Installer for USB devices (GUI version)
- * Copyright (c) 2010-2017 Pete Batard <pete@akeo.ie>
+ * Driver Installer for lasers compatible with K40 Whisperer
+ * Adapted by Scorch http://www.scorchworks.com
+ * This is a modified version of Zadig that has a singular purpose
+ * of installing LibUSB drivers for CH341 chip based laser controllers.
+ *
+ * The original copywrite and license information is provided below:
+ * Zadig: Copyright (c) 2010-2017 Pete Batard <pete@akeo.ie>
  * For more info, please visit http://libwdi.akeo.ie
  *
  * This program is free software: you can redistribute it and/or modify
@@ -91,8 +96,8 @@ struct wdi_device_info *device, *list = NULL;
 int current_device_index = CB_ERR;
 char* current_device_hardware_id = NULL;
 char* editable_desc = NULL;
-int default_driver_type = WDI_WINUSB;
-int log_level = WDI_LOG_LEVEL_DEBUG;
+int default_driver_type = WDI_LIBUSB0;
+int log_level = WDI_LOG_LEVEL_INFO;
 int nb_devices = -1;
 int dialog_showing = 0;
 // Application states
@@ -105,12 +110,12 @@ BOOL installation_running = FALSE;
 BOOL unknown_vid = FALSE;
 BOOL has_filter_driver = FALSE;
 BOOL use_arrow_icons = FALSE;
-BOOL exit_on_success = FALSE;
+BOOL exit_on_success = TRUE;
 enum wcid_state has_wcid = WCID_NONE;
 int wcid_type = WDI_USER;
 UINT64 target_driver_version = 0;
-EXT_DECL(log_ext, "Zadig.log", __VA_GROUP__("*.log"), __VA_GROUP__("Zadig log"));
-EXT_DECL(cfg_ext, "sample.cfg", __VA_GROUP__("*.cfg"), __VA_GROUP__("Zadig device config"));
+EXT_DECL(log_ext, "K40_Driver_Installer.log", __VA_GROUP__("*.log"), __VA_GROUP__("Installer log"));
+//EXT_DECL(cfg_ext, "sample.cfg", __VA_GROUP__("*.cfg"), __VA_GROUP__("Zadig device config"));
 
 /*
  * On screen logging and status
@@ -209,13 +214,20 @@ int display_devices(void)
 			continue;
 		}
 		max_width = max(max_width, size.cx);
-
-		index = ComboBox_AddStringU(hDeviceList, dev->desc);
-		if ((index != CB_ERR) && (index != CB_ERRSPACE)) {
-			_IGNORE(ComboBox_SetItemData(hDeviceList, index, (LPARAM)dev));
-		} else {
-			dprintf("error: could not populate dropdown list for device '%s'", dev->desc);
-		}
+        
+		//dprintf("Scorch: Looking for devices");
+		//VID = 0x1A86
+		//PID = 0x5512
+		if ((dev->vid == 0x0CF3) && (dev->pid == 0xE009)) // Bluetooth Device
+		//if ((dev->vid == 0x1A86) && (dev->pid == 0x5512)) // K40 Laser Device
+        {
+            index = ComboBox_AddStringU(hDeviceList, dev->desc);
+            if ((index != CB_ERR) && (index != CB_ERRSPACE)) {
+                _IGNORE(ComboBox_SetItemData(hDeviceList, index, (LPARAM)dev));
+            } else {
+                dprintf("error: could not populate dropdown list for device '%s'", dev->desc);
+            }
+        }
 
 		// Select by Hardware ID if one's available
 		if (safe_strcmp(current_device_hardware_id, dev->hardware_id) == 0) {
@@ -295,64 +307,64 @@ int get_driver_type(struct wdi_device_info* dev)
 int install_driver(void)
 {
 	struct wdi_device_info* dev = device;
-	char str_buf[STR_BUFFER_SIZE];
+	//char str_buf[STR_BUFFER_SIZE];  //unreferenced varriable
 	char* inf_name = NULL;
 	BOOL need_dealloc = FALSE;
-	int tmp, r = WDI_ERROR_OTHER;
+	int tmp, r = WDI_ERROR_OTHER; //unreferenced varriable
 
-	if ( (dev == NULL) && (!extract_only) && (!pd_options.use_wcid_driver)
-	  && (!(GetMenuState(hMenuDevice, IDM_CREATE, MF_CHECKED) & MF_CHECKED)) ) {
-		return WDI_ERROR_NO_DEVICE;
-	}
+	//if ( (dev == NULL) && (!extract_only) && (!pd_options.use_wcid_driver)
+	//  && (!(GetMenuState(hMenuDevice, IDM_CREATE, MF_CHECKED) & MF_CHECKED)) ) {
+	//	return WDI_ERROR_NO_DEVICE;
+	//}
 
 	installation_running = TRUE;
-	if ( (GetMenuState(hMenuDevice, IDM_CREATE, MF_CHECKED) & MF_CHECKED)
-	  || (pd_options.use_wcid_driver) ) {
-		// If the device is created from scratch, override the existing device
-		dev = (struct wdi_device_info*)calloc(1, sizeof(struct wdi_device_info));
-		if (dev == NULL) {
-			dprintf("could not create new device_info struct for installation");
-			r = WDI_ERROR_RESOURCE; goto out;
-		}
-		need_dealloc = TRUE;
+	//if ( (GetMenuState(hMenuDevice, IDM_CREATE, MF_CHECKED) & MF_CHECKED)  || (pd_options.use_wcid_driver) )
+	//{
+	//	// If the device is created from scratch, override the existing device
+	//	dev = (struct wdi_device_info*)calloc(1, sizeof(struct wdi_device_info));
+	//	if (dev == NULL) {
+	//		dprintf("could not create new device_info struct for installation");
+	//		r = WDI_ERROR_RESOURCE; goto out;
+	//	}
+	//	need_dealloc = TRUE;
 
-		if (pd_options.use_wcid_driver) {
-			dev->desc = (char*)malloc(128);
-			if (dev->desc == NULL) {
-				r = WDI_ERROR_RESOURCE;
-				goto out;
-			}
-			safe_sprintf(dev->desc, 128, "%s Generic Device", driver_display_name[pd_options.driver_type]);
-		} else {
-			// Retrieve the various device parameters
-			if (ComboBox_GetTextU(GetDlgItem(hMainDialog, IDC_DEVICEEDIT), str_buf, STR_BUFFER_SIZE) == 0) {
-				notification(MSG_ERROR, NULL, "Driver Installation", "The description string cannot be empty.");
-				r = WDI_ERROR_INVALID_PARAM; goto out;
-			}
-			dev->desc = safe_strdup(str_buf);
-			GetDlgItemTextA(hMainDialog, IDC_VID, str_buf, STR_BUFFER_SIZE);
-			if (sscanf(str_buf, "%4x", &tmp) != 1) {
-				dprintf("could not convert VID string - aborting");
-				r = WDI_ERROR_INVALID_PARAM; goto out;
-			}
-			dev->vid = (unsigned short)tmp;
-			GetDlgItemTextA(hMainDialog, IDC_PID, str_buf, STR_BUFFER_SIZE);
-			if (sscanf(str_buf, "%4x", &tmp) != 1) {
-				dprintf("could not convert PID string - aborting");
-				r = WDI_ERROR_INVALID_PARAM; goto out;
-			}
-			dev->pid = (unsigned short)tmp;
-			GetDlgItemTextA(hMainDialog, IDC_MI, str_buf, STR_BUFFER_SIZE);
-			if ( (safe_strlen(str_buf) != 0)
-			  && (sscanf(str_buf, "%2x", &tmp) == 1) ) {
-				dev->is_composite = TRUE;
-				dev->mi = (unsigned char)tmp;
-			} else {
-				dev->is_composite = FALSE;
-				dev->mi = 0;
-			}
-		}
-	}
+	//	if (pd_options.use_wcid_driver) {
+	//		dev->desc = (char*)malloc(128);
+	//		if (dev->desc == NULL) {
+	//			r = WDI_ERROR_RESOURCE;
+	//			goto out;
+	//		}
+	//		safe_sprintf(dev->desc, 128, "%s Generic Device", driver_display_name[pd_options.driver_type]);
+	//	} else {
+	//		// Retrieve the various device parameters
+	//		if (ComboBox_GetTextU(GetDlgItem(hMainDialog, IDC_DEVICEEDIT), str_buf, STR_BUFFER_SIZE) == 0) {
+	//			notification(MSG_ERROR, NULL, "Driver Installation", "The description string cannot be empty.");
+	//			r = WDI_ERROR_INVALID_PARAM; goto out;
+	//		}
+	//		dev->desc = safe_strdup(str_buf);
+	//		GetDlgItemTextA(hMainDialog, IDC_VID, str_buf, STR_BUFFER_SIZE);
+	//		if (sscanf(str_buf, "%4x", &tmp) != 1) {
+	//			dprintf("could not convert VID string - aborting");
+	//			r = WDI_ERROR_INVALID_PARAM; goto out;
+	//		}
+	//		dev->vid = (unsigned short)tmp;
+	//		GetDlgItemTextA(hMainDialog, IDC_PID, str_buf, STR_BUFFER_SIZE);
+	//		if (sscanf(str_buf, "%4x", &tmp) != 1) {
+	//			dprintf("could not convert PID string - aborting");
+	//			r = WDI_ERROR_INVALID_PARAM; goto out;
+	//		}
+	//		dev->pid = (unsigned short)tmp;
+	//		GetDlgItemTextA(hMainDialog, IDC_MI, str_buf, STR_BUFFER_SIZE);
+	//		if ( (safe_strlen(str_buf) != 0)
+	//		  && (sscanf(str_buf, "%2x", &tmp) == 1) ) {
+	//			dev->is_composite = TRUE;
+	//			dev->mi = (unsigned char)tmp;
+	//		} else {
+	//			dev->is_composite = FALSE;
+	//			dev->mi = 0;
+	//		}
+	//	}
+	//}
 
 	if (dev != NULL) {
 		inf_name = to_valid_filename(dev->desc, ".inf");
@@ -376,6 +388,10 @@ int install_driver(void)
 			r = WDI_ERROR_USER_CANCEL; goto out;
 		}
 	}
+
+	pd_options.disable_cat     = FALSE;  //scorchscorch debug
+	pd_options.disable_signing = FALSE;  //scorchscorch debug
+
 	r = wdi_prepare_driver(dev, szFolderPath, inf_name, &pd_options);
 	if (r == WDI_SUCCESS) {
 		dsprintf("Successfully extracted driver files.");
@@ -392,9 +408,10 @@ int install_driver(void)
 			r = wdi_install_driver(dev, szFolderPath, inf_name, &id_options);
 			// Switch to non driverless-only mode and set hw ID to show the newly installed device
 			current_device_hardware_id = (dev != NULL)?safe_strdup(dev->hardware_id):NULL;
-			if ((r == WDI_SUCCESS) && (!cl_options.list_all) && (!pd_options.use_wcid_driver)) {
-				toggle_driverless(FALSE);
-			}
+			//if ((r == WDI_SUCCESS) && (!cl_options.list_all) && (!pd_options.use_wcid_driver))
+			//{
+			//	toggle_driverless(FALSE);
+			//}
 			PostMessage(hMainDialog, WM_DEVICECHANGE, 0, 0);	// Force a refresh
 		}
 	} else {
@@ -488,12 +505,12 @@ void set_driver(void)
 	char target_text[64];
 
 	if ((pd_options.driver_type == WDI_CDC) || (pd_options.driver_type >= WDI_USER)) {
-		safe_sprintf(target_text, 64, "%s", driver_display_name[pd_options.driver_type]);
-		EnableMenuItem(hMenuOptions, IDM_CREATECAT, MF_GRAYED);
-		EnableMenuItem(hMenuOptions, IDM_SIGNCAT, MF_GRAYED);
+		safe_sprintf(target_text, 64, "?? %s", driver_display_name[pd_options.driver_type]);
+		//EnableMenuItem(hMenuOptions, IDM_CREATECAT, MF_GRAYED);
+		//EnableMenuItem(hMenuOptions, IDM_SIGNCAT, MF_GRAYED);
 	} else {
-		EnableMenuItem(hMenuOptions, IDM_CREATECAT, MF_ENABLED);
-		EnableMenuItem(hMenuOptions, IDM_SIGNCAT, pd_options.disable_cat?MF_GRAYED:MF_ENABLED);
+		//EnableMenuItem(hMenuOptions, IDM_CREATECAT, MF_ENABLED);
+		//EnableMenuItem(hMenuOptions, IDM_SIGNCAT, pd_options.disable_cat?MF_GRAYED:MF_ENABLED);
 		if (wdi_is_driver_supported(pd_options.driver_type, &file_info)) {
 			target_driver_version = file_info.dwFileVersionMS;
 			target_driver_version <<= 32;
@@ -504,10 +521,13 @@ void set_driver(void)
 			pd_options.use_wcid_driver = (nb_devices < 0) ||
 				((has_wcid == WCID_TRUE) && (pd_options.driver_type == wcid_type));
 		} else {
-			safe_sprintf(target_text, 64, "%s", driver_display_name[pd_options.driver_type]);
+			safe_sprintf(target_text, 64, "** %s", driver_display_name[pd_options.driver_type]);
 		}
 	}
-	SetDlgItemTextA(hMainDialog, IDC_TARGET, target_text);
+	if (pd_options.driver_type==1) //Only display option for libusb-win32 driver
+	{
+		SetDlgItemTextA(hMainDialog, IDC_TARGET, target_text);
+	}
 }
 
 
@@ -639,19 +659,20 @@ void update_ui(void)
 	BOOL same_driver;
 	BOOL warn;
 
-	switch (has_wcid) {
-	case WCID_TRUE:
-		ShowWindow(GetDlgItem(hMainDialog, IDC_WCID), TRUE);
-		SendMessage(GetDlgItem(hMainDialog, IDC_WCID_ICON), STM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIconTickOK);
-		break;
-	case WCID_FALSE:
-		ShowWindow(GetDlgItem(hMainDialog, IDC_WCID), FALSE);
-		SendMessage(GetDlgItem(hMainDialog, IDC_WCID_ICON), STM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIconTickNOK);
-		break;
-	case WCID_NONE:
-		ShowWindow(GetDlgItem(hMainDialog, IDC_WCID), FALSE);
-		SendMessage(GetDlgItem(hMainDialog, IDC_WCID_ICON), STM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)NULL);
-		break;
+	switch (has_wcid) 
+	{
+		case WCID_TRUE:
+			ShowWindow(GetDlgItem(hMainDialog, IDC_WCID), TRUE);
+			SendMessage(GetDlgItem(hMainDialog, IDC_WCID_ICON), STM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIconTickOK);
+			break;
+		case WCID_FALSE:
+			ShowWindow(GetDlgItem(hMainDialog, IDC_WCID), FALSE);
+			SendMessage(GetDlgItem(hMainDialog, IDC_WCID_ICON), STM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)hIconTickNOK);
+			break;
+		case WCID_NONE:
+			ShowWindow(GetDlgItem(hMainDialog, IDC_WCID), FALSE);
+			SendMessage(GetDlgItem(hMainDialog, IDC_WCID_ICON), STM_SETIMAGE, (WPARAM)IMAGE_ICON, (LPARAM)NULL);
+			break;
 	}
 
 	if (pd_options.driver_type != WDI_LIBUSB0) {
@@ -676,83 +697,83 @@ void update_ui(void)
 		"Driver installation is deemed safe", -1);
 }
 
-// Toggle device creation mode
-void toggle_create(BOOL refresh)
-{
-	create_device = !(GetMenuState(hMenuDevice, IDM_CREATE, MF_CHECKED) & MF_CHECKED);
-	if (create_device) {
-		device = NULL;
-		// Disable Edit Desc. if selected
-		if (IsDlgButtonChecked(hMainDialog, IDC_EDITNAME) == BST_CHECKED) {
-			CheckDlgButton(hMainDialog, IDC_EDITNAME, BST_UNCHECKED);
-			toggle_edit();
-		}
-		combo_breaker(TRUE);
-		has_wcid = WCID_NONE;
-		update_ui();
-		EnableWindow(GetDlgItem(hMainDialog, IDC_EDITNAME), FALSE);
-		SetDlgItemTextA(hMainDialog, IDC_VID, "");
-		SetDlgItemTextA(hMainDialog, IDC_PID, "");
-		SetDlgItemTextA(hMainDialog, IDC_MI, "");
-		SetDlgItemTextA(hMainDialog, IDC_DRIVER, "");
-		SetDlgItemTextA(hMainDialog, IDC_DEVICEEDIT, "");
-		PostMessage(GetDlgItem(hMainDialog, IDC_VID), EM_SETREADONLY, (WPARAM)FALSE, 0);
-		PostMessage(GetDlgItem(hMainDialog, IDC_PID), EM_SETREADONLY, (WPARAM)FALSE, 0);
-		PostMessage(GetDlgItem(hMainDialog, IDC_MI), EM_SETREADONLY, (WPARAM)FALSE, 0);
-		destroy_tooltip(hVIDToolTip);
-		hVIDToolTip = NULL;
-		unknown_vid = FALSE;
-		display_mi(TRUE);
-		SetFocus(GetDlgItem(hMainDialog, IDC_DEVICEEDIT));
-	} else {
-		combo_breaker(FALSE);
-		PostMessage(GetDlgItem(hMainDialog, IDC_VID), EM_SETREADONLY, (WPARAM)TRUE, 0);
-		PostMessage(GetDlgItem(hMainDialog, IDC_PID), EM_SETREADONLY, (WPARAM)TRUE, 0);
-		PostMessage(GetDlgItem(hMainDialog, IDC_MI), EM_SETREADONLY, (WPARAM)TRUE, 0);
-		if (refresh) {
-			PostMessage(hMainDialog, UM_REFRESH_LIST, 0, 0);
-		}
-	}
-	CheckMenuItem(hMenuDevice, IDM_CREATE, create_device?MF_CHECKED:MF_UNCHECKED);
-	pd_options.use_wcid_driver = FALSE;
-	replace_driver = FALSE;
-	set_install_button();
-}
+//// Toggle device creation mode
+//void toggle_create(BOOL refresh)
+//{
+//	create_device = !(GetMenuState(hMenuDevice, IDM_CREATE, MF_CHECKED) & MF_CHECKED);
+//	if (create_device) {
+//		device = NULL;
+//		// Disable Edit Desc. if selected
+//		if (IsDlgButtonChecked(hMainDialog, IDC_EDITNAME) == BST_CHECKED) {
+//			CheckDlgButton(hMainDialog, IDC_EDITNAME, BST_UNCHECKED);
+//			toggle_edit();
+//		}
+//		combo_breaker(TRUE);
+//		has_wcid = WCID_NONE;
+//		update_ui();
+//		EnableWindow(GetDlgItem(hMainDialog, IDC_EDITNAME), FALSE);
+//		SetDlgItemTextA(hMainDialog, IDC_VID, "");
+//		SetDlgItemTextA(hMainDialog, IDC_PID, "");
+//		SetDlgItemTextA(hMainDialog, IDC_MI, "");
+//		SetDlgItemTextA(hMainDialog, IDC_DRIVER, "");
+//		SetDlgItemTextA(hMainDialog, IDC_DEVICEEDIT, "");
+//		PostMessage(GetDlgItem(hMainDialog, IDC_VID), EM_SETREADONLY, (WPARAM)FALSE, 0);
+//		PostMessage(GetDlgItem(hMainDialog, IDC_PID), EM_SETREADONLY, (WPARAM)FALSE, 0);
+//		PostMessage(GetDlgItem(hMainDialog, IDC_MI), EM_SETREADONLY, (WPARAM)FALSE, 0);
+//		destroy_tooltip(hVIDToolTip);
+//		hVIDToolTip = NULL;
+//		unknown_vid = FALSE;
+//		display_mi(TRUE);
+//		SetFocus(GetDlgItem(hMainDialog, IDC_DEVICEEDIT));
+//	} else {
+//		combo_breaker(FALSE);
+//		PostMessage(GetDlgItem(hMainDialog, IDC_VID), EM_SETREADONLY, (WPARAM)TRUE, 0);
+//		PostMessage(GetDlgItem(hMainDialog, IDC_PID), EM_SETREADONLY, (WPARAM)TRUE, 0);
+//		PostMessage(GetDlgItem(hMainDialog, IDC_MI), EM_SETREADONLY, (WPARAM)TRUE, 0);
+//		if (refresh) {
+//			PostMessage(hMainDialog, UM_REFRESH_LIST, 0, 0);
+//		}
+//	}
+//	CheckMenuItem(hMenuDevice, IDM_CREATE, create_device?MF_CHECKED:MF_UNCHECKED);
+//	pd_options.use_wcid_driver = FALSE;
+//	replace_driver = FALSE;
+//	set_install_button();
+//}
 
-// Toggle ignore hubs & composite
-void toggle_hubs(BOOL refresh)
-{
-	cl_options.list_hubs = GetMenuState(hMenuOptions, IDM_IGNOREHUBS, MF_CHECKED) & MF_CHECKED;
-
-	if (create_device) {
-		toggle_create(TRUE);
-	}
-
-	CheckMenuItem(hMenuOptions, IDM_IGNOREHUBS, cl_options.list_hubs?MF_UNCHECKED:MF_CHECKED);
-	// Reset Edit button
-	CheckDlgButton(hMainDialog, IDC_EDITNAME, BST_UNCHECKED);
-	// Reset Combo
-	combo_breaker(FALSE);
-	if (refresh) {
-		PostMessage(hMainDialog, UM_REFRESH_LIST, 0, 0);
-	}
-}
+//// Toggle ignore hubs & composite
+//void toggle_hubs(BOOL refresh)
+//{
+//	cl_options.list_hubs = GetMenuState(hMenuOptions, IDM_IGNOREHUBS, MF_CHECKED) & MF_CHECKED;
+//
+//	//if (create_device) {
+//	//	toggle_create(TRUE);
+//	//}
+//
+//	CheckMenuItem(hMenuOptions, IDM_IGNOREHUBS, cl_options.list_hubs?MF_UNCHECKED:MF_CHECKED);
+//	// Reset Edit button
+//	CheckDlgButton(hMainDialog, IDC_EDITNAME, BST_UNCHECKED);
+//	// Reset Combo
+//	combo_breaker(FALSE);
+//	if (refresh) {
+//		PostMessage(hMainDialog, UM_REFRESH_LIST, 0, 0);
+//	}
+//}
 
 // Toggle driverless device listing
 void toggle_driverless(BOOL refresh)
 {
 	cl_options.list_all = !(GetMenuState(hMenuOptions, IDM_LISTALL, MF_CHECKED) & MF_CHECKED);
-	EnableMenuItem(hMenuOptions, IDM_IGNOREHUBS, cl_options.list_all?MF_ENABLED:MF_GRAYED);
-
-	if (create_device) {
-		toggle_create(TRUE);
-	}
-
+//	EnableMenuItem(hMenuOptions, IDM_IGNOREHUBS, cl_options.list_all?MF_ENABLED:MF_GRAYED);
+//
+//	//if (create_device) {
+//	//	toggle_create(TRUE);
+//	//}
+//
 	CheckMenuItem(hMenuOptions, IDM_LISTALL, cl_options.list_all?MF_CHECKED:MF_UNCHECKED);
-	// Reset Edit button
-	CheckDlgButton(hMainDialog, IDC_EDITNAME, BST_UNCHECKED);
-	// Reset Combo
-	combo_breaker(FALSE);
+//	// Reset Edit button
+//	CheckDlgButton(hMainDialog, IDC_EDITNAME, BST_UNCHECKED);
+//	// Reset Combo
+//	combo_breaker(FALSE);
 	if (refresh) {
 		PostMessage(hMainDialog, UM_REFRESH_LIST, 0, 0);
 	}
@@ -765,11 +786,13 @@ void set_install_button(void)
 	char *action, *qualifier, *object;
 
 	EnableMenuItem(hMenuSplit, IDM_SPLIT_INSTALL, ((device==NULL)&&(!create_device))?MF_GRAYED:MF_ENABLED);
-	EnableMenuItem(hMenuSplit, IDM_SPLIT_WCID, (create_device)?MF_GRAYED:MF_ENABLED);
-	CheckMenuItem(hMenuSplit, IDM_SPLIT_INSTALL, MF_CHECK((!pd_options.use_wcid_driver) && (!extract_only) && (!id_options.install_filter_driver)));
-	CheckMenuItem(hMenuSplit, IDM_SPLIT_WCID, MF_CHECK(pd_options.use_wcid_driver && (!extract_only) && (!id_options.install_filter_driver)));
-	CheckMenuItem(hMenuSplit, IDM_SPLIT_EXTRACT, MF_CHECK(extract_only && (!id_options.install_filter_driver)));
-	CheckMenuItem(hMenuSplit, IDM_SPLIT_FILTER, MF_CHECK(id_options.install_filter_driver));
+	EnableMenuItem(hMenuSplit, IDM_SPLIT_WCID   , (create_device)?MF_GRAYED:MF_ENABLED);
+
+	CheckMenuItem (hMenuSplit, IDM_SPLIT_INSTALL, MF_CHECK((!pd_options.use_wcid_driver) && (!extract_only) && (!id_options.install_filter_driver)));
+	CheckMenuItem (hMenuSplit, IDM_SPLIT_WCID   , MF_CHECK(( pd_options.use_wcid_driver) && (!extract_only) && (!id_options.install_filter_driver)));
+	CheckMenuItem (hMenuSplit, IDM_SPLIT_EXTRACT, MF_CHECK(extract_only && (!id_options.install_filter_driver)));
+	CheckMenuItem (hMenuSplit, IDM_SPLIT_FILTER , MF_CHECK(id_options.install_filter_driver));
+
 	if (extract_only) {
 		action = "Extract";
 		object = "Files";
@@ -795,8 +818,17 @@ void set_install_button(void)
 			action = has_filter_driver?"Delete":"Install";
 		}
 	}
-	qualifier = pd_options.use_wcid_driver?"WCID ":(id_options.install_filter_driver?"Filter ":"");
-	safe_sprintf(label, 64, "%s %s%s", action, qualifier, object);
+	qualifier = pd_options.use_wcid_driver?  "-WCID- " : (id_options.install_filter_driver?"Filter ":"");
+	if (nb_devices != -1)
+	{
+		EnableWindow(GetDlgItem(hMainDialog, IDC_INSTALL), TRUE);
+		safe_sprintf(label, 64, "%s %s%s", action, qualifier, object);
+	}
+	else
+	{
+		EnableWindow(GetDlgItem(hMainDialog, IDC_INSTALL), FALSE);
+		safe_sprintf(label, 64, "Cannot Install\n(Laser Device Not found)");
+	}
 	SetDlgItemTextA(hMainDialog, IDC_INSTALL, label);
 }
 
@@ -831,9 +863,11 @@ void init_dialog(HWND hDlg)
 	hDeviceList = GetDlgItem(hDlg, IDC_DEVICELIST);
 	hInfo = GetDlgItem(hDlg, IDC_INFO);
 	hArrow = GetDlgItem(hMainDialog, IDC_RARR);
-	hMenuDevice = GetSubMenu(GetMenu(hDlg), 0);
-	hMenuOptions = GetSubMenu(GetMenu(hDlg), 1);
-	hMenuLogLevel = GetSubMenu(hMenuOptions, 7);
+	//hMenuDevice = GetSubMenu(GetMenu(hDlg), 0);
+	//hMenuOptions = GetSubMenu(GetMenu(hDlg), 1);
+	hMenuOptions = GetSubMenu(GetMenu(hDlg), 0);
+	//hMenuLogLevel = GetSubMenu(hMenuOptions, 7);
+	hMenuLogLevel = GetSubMenu(hMenuOptions, 3);
 	hMenuSplit = GetSubMenu(LoadMenuA(main_instance, "IDR_INSTALLSPLIT"), 0);
 
 	// High DPI scaling
@@ -858,36 +892,21 @@ void init_dialog(HWND hDlg)
 	SendMessageA(GetDlgItem(hDlg, IDC_STATUS), SB_SETTEXTA, SBT_OWNERDRAW | 1, (LPARAM)APP_VERSION);
 
 	// Create various tooltips
-	create_tooltip(GetDlgItem(hMainDialog, IDC_EDITNAME),
-		"Change the device name", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_VIDPID),
-		"VID:PID[:MI]", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_DRIVER),
-		"Current Driver", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_TARGET),
-		"Target Driver", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_STATIC_WCID),
-		"Windows Compatible ID\nClick '?' for more info.", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_WCID_BOX),
-		"Windows Compatible ID\nClick '?' for more info.", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_WCID_ICON),
-		"Windows Compatible ID\nClick '?' for more info.", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_BROWSE),
-		"Directory to extract/install files to", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_WCID_URL),
-		"Online information about WCID", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_VID_REPORT),
-		"Submit Vendor to the USB ID Repository", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_FILTER_ICON),
-		"This device also has the\nlibusb-win32 filter driver", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_LIBUSB_URL),
-		"Find out more about libusb online", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_LIBUSB0_URL),
-		"Find out more about libusb-win32 online", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_LIBUSBK_URL),
-		"Find out more about libusbK online", -1);
-	create_tooltip(GetDlgItem(hMainDialog, IDC_WINUSB_URL),
-		"Find out more about WinUSB online", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_EDITNAME),    "Change the device name", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_VIDPID),	     "VID:PID[:MI]", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_DRIVER),      "Current Driver", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_TARGET),      "Target Driver", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_STATIC_WCID), "Windows Compatible ID\nClick '?' for more info.", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_WCID_BOX),    "Windows Compatible ID\nClick '?' for more info.", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_WCID_ICON),   "Windows Compatible ID\nClick '?' for more info.", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_BROWSE),      "Directory to extract/install files to", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_WCID_URL),    "Online information about WCID", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_VID_REPORT),  "Submit Vendor to the USB ID Repository", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_FILTER_ICON), "This device also has the\nlibusb-win32 filter driver", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_LIBUSB_URL),  "Find out more about libusb online", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_LIBUSB0_URL), "Find out more about libusb-win32 online", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_LIBUSBK_URL), "Find out more about libusbK online", -1);
+	create_tooltip(GetDlgItem(hMainDialog, IDC_WINUSB_URL),  "Find out more about WinUSB online", -1);
 
 	// Load system icons for various items (NB: Use the excellent http://www.nirsoft.net/utils/iconsext.html to find icon IDs)
 	hDllInst = GetLibraryHandle("shell32");
@@ -980,88 +999,89 @@ void init_dialog(HWND hDlg)
 	PostMessage(GetDlgItem(hMainDialog, IDC_MI), EM_SETLIMITTEXT, 2, 0);
 
 	// Parse the ini file and set the startup options accordingly
-	parse_ini();
+	//parse_ini();
 	set_loglevel(log_level+IDM_LOGLEVEL_DEBUG);
 	set_default_driver();
+	toggle_driverless(TRUE);
 
 	if (!advanced_mode) {
 		toggle_advanced();	// We start in advanced mode
 	}
-	if (cl_options.list_all) {
-		toggle_driverless(FALSE);
-	}
-	if (cl_options.list_hubs) {
-		toggle_hubs(FALSE);
-	}
+	//if (cl_options.list_all) {
+	//	toggle_driverless(FALSE);
+	//}
+	//if (cl_options.list_hubs) {
+	//	toggle_hubs(FALSE);
+	//}
 	pd_options.driver_type = default_driver_type;
 	select_next_driver(0);
 }
 
-/*
- * Parse the default ini file
- */
-BOOL parse_ini(void) {
-	profile_t profile;
-	char* tmp = NULL;
-	long r;
-
-	// Check if the ini file exists
-	if (GetFileAttributesU(INI_NAME) == INVALID_FILE_ATTRIBUTES) {
-		dprintf("ini file '%s' not found - default parameters will be used", INI_NAME);
-		return FALSE;
-	}
-
-	// Parse the file
-	r = profile_open(INI_NAME, &profile);
-	if (r) {
-		dprintf("error while processing '%s': %s", INI_NAME, profile_errtostr(r));
-		return FALSE;
-	}
-
-	dprintf("reading ini file '%s'", INI_NAME);
-
-	// Set the various boolean options
-	profile_get_boolean(profile, "general", "advanced_mode", NULL, FALSE, &advanced_mode);
-	profile_get_boolean(profile, "general", "exit_on_success", NULL, FALSE, &exit_on_success);
-	profile_get_boolean(profile, "device", "list_all", NULL, FALSE, &cl_options.list_all);
-	profile_get_boolean(profile, "device", "include_hubs", NULL, FALSE, &cl_options.list_hubs);
-	profile_get_boolean(profile, "driver", "extract_only", NULL, FALSE, &extract_only);
-	profile_get_boolean(profile, "device", "trim_whitespaces", NULL, FALSE, &cl_options.trim_whitespaces);
-	profile_get_boolean(profile, "security", "disable_cert_install_warning", NULL, FALSE, &ic_options.disable_warning);
-
-	// Set the log level
-	profile_get_integer(profile, "general", "log_level", NULL, WDI_LOG_LEVEL_INFO, &log_level);
-	if ((log_level < WDI_LOG_LEVEL_DEBUG) && (log_level > WDI_LOG_LEVEL_NONE)) {
-		log_level = WDI_LOG_LEVEL_INFO;
-	}
-
-	// Set the default extraction dir
-	if ((profile_get_string(profile, "driver", "default_dir", NULL, NULL, &tmp) == 0) && (tmp != NULL)) {
-		safe_strcpy(szFolderPath, sizeof(szFolderPath), tmp);
-	}
-
-	// Set the certificate name to install, if any
-	if ( (profile_get_string(profile, "security", "install_cert", NULL, NULL, &tmp) == 0)
-	  && (tmp != NULL) ) {
-		if (wdi_is_file_embedded(NULL, (char*)tmp)) {
-			ic_options.hWnd = hMainDialog;
-			wdi_install_trusted_certificate((char*)tmp, &ic_options);
-		} else {
-			dprintf("certificate '%s' not found in this application", tmp);
-		}
-	}
-
-	// Set the default driver
-	profile_get_integer(profile, "driver", "default_driver", NULL, WDI_WINUSB, &default_driver_type);
-	if ((default_driver_type < WDI_WINUSB) || (default_driver_type >= WDI_NB_DRIVERS)) {
-		dprintf("invalid value '%d' for ini option 'default_driver'", default_driver_type);
-		default_driver_type = WDI_WINUSB;
-	}
-
-	profile_close(profile);
-
-	return TRUE;
-}
+///*
+// * Parse the default ini file
+// */
+//BOOL parse_ini(void) {
+//	profile_t profile;
+//	char* tmp = NULL;
+//	long r;
+//
+//	// Check if the ini file exists
+//	if (GetFileAttributesU(INI_NAME) == INVALID_FILE_ATTRIBUTES) {
+//		dprintf("ini file '%s' not found - default parameters will be used", INI_NAME);
+//		return FALSE;
+//	}
+//
+//	// Parse the file
+//	r = profile_open(INI_NAME, &profile);
+//	if (r) {
+//		dprintf("error while processing '%s': %s", INI_NAME, profile_errtostr(r));
+//		return FALSE;
+//	}
+//
+//	dprintf("reading ini file '%s'", INI_NAME);
+//
+//	// Set the various boolean options
+//	profile_get_boolean(profile, "general", "advanced_mode", NULL, FALSE, &advanced_mode);
+//	profile_get_boolean(profile, "general", "exit_on_success", NULL, FALSE, &exit_on_success);
+//	profile_get_boolean(profile, "device", "list_all", NULL, FALSE, &cl_options.list_all);
+//	profile_get_boolean(profile, "device", "include_hubs", NULL, FALSE, &cl_options.list_hubs);
+//	profile_get_boolean(profile, "driver", "extract_only", NULL, FALSE, &extract_only);
+//	profile_get_boolean(profile, "device", "trim_whitespaces", NULL, FALSE, &cl_options.trim_whitespaces);
+//	profile_get_boolean(profile, "security", "disable_cert_install_warning", NULL, FALSE, &ic_options.disable_warning);
+//
+//	// Set the log level
+//	profile_get_integer(profile, "general", "log_level", NULL, WDI_LOG_LEVEL_INFO, &log_level);
+//	if ((log_level < WDI_LOG_LEVEL_DEBUG) && (log_level > WDI_LOG_LEVEL_NONE)) {
+//		log_level = WDI_LOG_LEVEL_INFO;
+//	}
+//
+//	// Set the default extraction dir
+//	if ((profile_get_string(profile, "driver", "default_dir", NULL, NULL, &tmp) == 0) && (tmp != NULL)) {
+//		safe_strcpy(szFolderPath, sizeof(szFolderPath), tmp);
+//	}
+//
+//	// Set the certificate name to install, if any
+//	if ( (profile_get_string(profile, "security", "install_cert", NULL, NULL, &tmp) == 0)
+//	  && (tmp != NULL) ) {
+//		if (wdi_is_file_embedded(NULL, (char*)tmp)) {
+//			ic_options.hWnd = hMainDialog;
+//			wdi_install_trusted_certificate((char*)tmp, &ic_options);
+//		} else {
+//			dprintf("certificate '%s' not found in this application", tmp);
+//		}
+//	}
+//
+//	// Set the default driver
+//	profile_get_integer(profile, "driver", "default_driver", NULL, WDI_WINUSB, &default_driver_type);
+//	if ((default_driver_type < WDI_WINUSB) || (default_driver_type >= WDI_NB_DRIVERS)) {
+//		dprintf("invalid value '%d' for ini option 'default_driver'", default_driver_type);
+//		default_driver_type = WDI_WINUSB;
+//	}
+//
+//	profile_close(profile);
+//
+//	return TRUE;
+//}
 
 /*
  * Parse a preset device configuration file
@@ -1091,9 +1111,9 @@ BOOL parse_preset(char* filename)
 		return FALSE;
 	}
 
-	if (!create_device) {
-		toggle_create(FALSE);
-	}
+	//if (!create_device) {
+	//	toggle_create(FALSE);
+	//}
 
 	safe_sprintf(str_tmp, 5, "%04X", tmp);
 	SetDlgItemTextA(hMainDialog, IDC_VID, str_tmp);
@@ -1188,8 +1208,8 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 	int i, r;
 	HWND hCtrl;
 	DWORD delay, read_size, log_size;
-	STARTUPINFOA si;
-	PROCESS_INFORMATION pi;
+	//STARTUPINFOA si; //unreferenced varriable
+	//PROCESS_INFORMATION pi; //unreferenced varriable
 	NMBCDROPDOWN* pDropDown;
 	POINT pt;
 	DRAWITEMSTRUCT* di;
@@ -1241,10 +1261,10 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			if (MessageBoxA(hMainDialog, "The USB device list has been modified.\n"
 				"Do you want to refresh the application?\n(you will lose all your modifications)",
 				"USB Event Notification", MB_YESNO | MB_ICONINFORMATION) == IDYES) {
-				if (create_device) {
-					toggle_create(FALSE);
-				}
-				CheckMenuItem(hMenuDevice, IDM_CREATE, MF_UNCHECKED);
+				//if (create_device) {
+				//	toggle_create(FALSE);
+				//}
+				//CheckMenuItem(hMenuDevice, IDM_CREATE, MF_UNCHECKED);
 				combo_breaker(FALSE);
 				PostMessage(hMainDialog, UM_REFRESH_LIST, 0, 0);
 			}
@@ -1262,12 +1282,11 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		}
 		return (INT_PTR)TRUE;
 
-	case UM_NO_UPDATE:
-		notification(MSG_INFO, NULL, "Update check", "No new version of Zadig was found");
-		break;
+	//case UM_NO_UPDATE:
+	//	notification(MSG_INFO, NULL, "Update check", "No new version of Zadig was found");
+	//	break;
 
 	case WM_INITDIALOG:
-		SetUpdateCheck();
 		// Setup options
 		cl_options.trim_whitespaces = TRUE;
 
@@ -1296,8 +1315,6 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 
 		// Main init
 		init_dialog(hDlg);
-		CheckForUpdates(FALSE);
-
 		// Fall through
 	case UM_REFRESH_LIST:
 		NOT_DURING_INSTALL;
@@ -1313,6 +1330,10 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		}
 		editable_desc = NULL;
 		device = NULL;
+
+		//scorchscorch
+		cl_options.list_hubs = TRUE;		
+
 		r = wdi_create_list(&list, &cl_options);
 		if (r == WDI_SUCCESS) {
 			nb_devices = display_devices();
@@ -1339,6 +1360,25 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			dprintf("%d device%s found.", nb_devices+1, (nb_devices!=0)?"s":"");
 			from_install = FALSE;
 		}
+		////scorchscorch
+		//dprintf("Scorch Testing if a device was found. nb_devices=%d", nb_devices);
+		///////////////////////////////////////////////////////////////////////////////////
+		//
+		////if (nb_devices < 0)
+		//if (0==1)
+		//{
+		//	//if (!create_device) { toggle_create(FALSE); }
+		//	SetDlgItemTextU(hMainDialog, IDC_DEVICEEDIT, "hello world");
+		//	SetDlgItemTextA(hMainDialog, IDC_VID, "1A86");
+		//	SetDlgItemTextA(hMainDialog, IDC_PID, "5512");
+		//	SetDlgItemTextA(hMainDialog, IDC_MI, "01");
+		//}
+		//else
+		//{
+		//	dprintf("nb_devices=%d", nb_devices);
+		//}
+		///////////////////////////////////////////////////////////////////////////////////
+
 		return (INT_PTR)TRUE;
 
 	case WM_VSCROLL:
@@ -1622,48 +1662,51 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			EndDialog(hDlg, 0);
 			break;
 		// Main Menus
-		case IDM_CREATE:
-			toggle_create(TRUE);
-			break;
-		case IDM_OPEN:
-			filepath = FileDialog(FALSE, app_dir, &cfg_ext, 0);
-			parse_preset(filepath);
-			break;
+		//case IDM_CREATE:
+		//	toggle_create(TRUE);
+		//	break;
+		//case IDM_OPEN:
+		//	filepath = FileDialog(FALSE, app_dir, &cfg_ext, 0);
+		//	parse_preset(filepath);
+		//	break;
 		case IDM_ABOUT:
 			DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_ABOUTBOX), hMainDialog, about_callback);
 			break;
-		case IDM_UPDATES:
-			DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_UPDATE_POLICY), hMainDialog, UpdateCallback);
-			break;
-		case IDM_CERTMGR:
-			memset(&si, 0, sizeof(si));
-			si.cb = sizeof(si);
-			memset(&pi, 0, sizeof(pi));
-			if (!CreateProcessU(NULL, "mmc certmgr.msc", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
-				dsprintf("Unable to launch the Certificate Manager");
-			}
-			break;
-		case IDM_ONLINEHELP:
-			ShellExecuteA(hDlg, "open", HELP_URL, NULL, NULL, SW_SHOWNORMAL);
-			break;
+		//case IDM_UPDATES:
+		//	DialogBoxW(main_instance, MAKEINTRESOURCEW(IDD_UPDATE_POLICY), hMainDialog, UpdateCallback);
+		//	break;
+		
+		//// OPEN CERTIFICATE MANAGER
+		//case IDM_CERTMGR:
+		//	memset(&si, 0, sizeof(si));
+		//	si.cb = sizeof(si);
+		//	memset(&pi, 0, sizeof(pi));
+		//	if (!CreateProcessU(NULL, "mmc certmgr.msc", NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+		//		dsprintf("Unable to launch the Certificate Manager");
+		//	}
+		//	break;
+
+		//case IDM_ONLINEHELP:
+		//	ShellExecuteA(hDlg, "open", HELP_URL, NULL, NULL, SW_SHOWNORMAL);
+		//	break;
 		case IDM_ADVANCEDMODE:
 			toggle_advanced();
 			break;
 		case IDM_LISTALL:
 			toggle_driverless(TRUE);
 			break;
-		case IDM_IGNOREHUBS:
-			toggle_hubs(TRUE);
-			break;
-		case IDM_CREATECAT:
-			pd_options.disable_cat = GetMenuState(hMenuOptions, IDM_CREATECAT, MF_CHECKED) & MF_CHECKED;
-			EnableMenuItem(hMenuOptions, IDM_SIGNCAT, pd_options.disable_cat?MF_GRAYED:MF_ENABLED);
-			CheckMenuItem(hMenuOptions, IDM_CREATECAT, pd_options.disable_cat?MF_UNCHECKED:MF_CHECKED);
-			break;
-		case IDM_SIGNCAT:
-			pd_options.disable_signing = GetMenuState(hMenuOptions, IDM_SIGNCAT, MF_CHECKED) & MF_CHECKED;
-			CheckMenuItem(hMenuOptions, IDM_SIGNCAT, pd_options.disable_signing?MF_UNCHECKED:MF_CHECKED);
-			break;
+		//case IDM_IGNOREHUBS:
+		//	toggle_hubs(TRUE);
+		//	break;
+		//case IDM_CREATECAT:
+		//	pd_options.disable_cat = GetMenuState(hMenuOptions, IDM_CREATECAT, MF_CHECKED) & MF_CHECKED;
+		//	EnableMenuItem(hMenuOptions, IDM_SIGNCAT, pd_options.disable_cat?MF_GRAYED:MF_ENABLED);
+		//	CheckMenuItem(hMenuOptions, IDM_CREATECAT, pd_options.disable_cat?MF_UNCHECKED:MF_CHECKED);
+		//	break;
+		//case IDM_SIGNCAT:
+		//	pd_options.disable_signing = GetMenuState(hMenuOptions, IDM_SIGNCAT, MF_CHECKED) & MF_CHECKED;
+		//	CheckMenuItem(hMenuOptions, IDM_SIGNCAT, pd_options.disable_signing?MF_UNCHECKED:MF_CHECKED);
+		//	break;
 		case IDM_LOGLEVEL_ERROR:
 		case IDM_LOGLEVEL_WARNING:
 		case IDM_LOGLEVEL_INFO:
@@ -1738,7 +1781,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		mutex = CreateMutexA(NULL, TRUE, "Global/" APPLICATION_NAME);
 	}
 	if ((mutex == NULL) || (GetLastError() == ERROR_ALREADY_EXISTS)) {
-		MessageBoxA(NULL, "Another Zadig application is running.\n"
+		MessageBoxA(NULL, "Another K40 Driver Installer application is running.\n"
 			"Please close the first application before running another one.",
 			"Other instance detected", MB_ICONSTOP);
 		safe_closehandle(mutex);
@@ -1750,7 +1793,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	// Alert users if they are running versions older than Windows 7
 	if (nWindowsVersion < WINDOWS_7) {
-		MessageBoxA(NULL, "This version of Zadig can only be run on Windows 7 or later",
+		MessageBoxA(NULL, "This version of K40 Driver Installer can only be run on Windows 7 or later",
 			"Incompatible version", MB_ICONSTOP);
 		CloseHandle(mutex);
 		return 0;
@@ -1803,7 +1846,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 			}
 			continue;
 		}
-		// Alt-R => Remove all the registry keys created by Zadig
+		// Alt-R => Remove all the registry keys created by K40 Driver Installer
 		if ((msg.message == WM_SYSKEYDOWN) && (msg.wParam == 'R')) {
 			dsprintf(DeleteRegistryKey(REGKEY_HKCU, COMPANY_NAME "\\" APPLICATION_NAME)?
 				"Application registry keys successfully deleted":"Failed to delete application registry keys");
@@ -1816,13 +1859,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		DispatchMessage(&msg);
 	}
 
-	safe_free(update.download_url);
-	safe_free(update.release_notes);
+	//dprintf("Scorch: safe_free(update.download_url);");
+	//safe_free(update.download_url);
+	//safe_free(update.release_notes);
+	dprintf("Scorch: FreeAllLibraries");
 	FreeAllLibraries();
+	dprintf("Scorch: CloseHandle(mutex);");
 	CloseHandle(mutex);
 #ifdef _CRTDBG_MAP_ALLOC
 	_CrtDumpMemoryLeaks();
 #endif
-
+	dprintf("Scorch: return 0;");
 	return 0;
 }
