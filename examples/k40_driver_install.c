@@ -214,12 +214,9 @@ int display_devices(void)
 			continue;
 		}
 		max_width = max(max_width, size.cx);
-        
-		//dprintf("Scorch: Looking for devices");
-		//VID = 0x1A86
-		//PID = 0x5512
-		if ((dev->vid == 0x0CF3) && (dev->pid == 0xE009)) // Bluetooth Device
-		//if ((dev->vid == 0x1A86) && (dev->pid == 0x5512)) // K40 Laser Device
+
+		//if ((dev->vid == 0x0CF3) && (dev->pid == 0xE009)) // Bluetooth Device I use this for testing
+		if ((dev->vid == 0x1A86) && (dev->pid == 0x5512)) // K40 Laser Device
         {
             index = ComboBox_AddStringU(hDeviceList, dev->desc);
             if ((index != CB_ERR) && (index != CB_ERRSPACE)) {
@@ -389,8 +386,8 @@ int install_driver(void)
 		}
 	}
 
-	pd_options.disable_cat     = FALSE;  //scorchscorch debug
-	pd_options.disable_signing = FALSE;  //scorchscorch debug
+	pd_options.disable_cat     = FALSE;
+	pd_options.disable_signing = FALSE;
 
 	r = wdi_prepare_driver(dev, szFolderPath, inf_name, &pd_options);
 	if (r == WDI_SUCCESS) {
@@ -1331,7 +1328,6 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 		editable_desc = NULL;
 		device = NULL;
 
-		//scorchscorch
 		cl_options.list_hubs = TRUE;		
 
 		r = wdi_create_list(&list, &cl_options);
@@ -1360,22 +1356,17 @@ INT_PTR CALLBACK main_callback(HWND hDlg, UINT message, WPARAM wParam, LPARAM lP
 			dprintf("%d device%s found.", nb_devices+1, (nb_devices!=0)?"s":"");
 			from_install = FALSE;
 		}
-		////scorchscorch
-		//dprintf("Scorch Testing if a device was found. nb_devices=%d", nb_devices);
+
 		///////////////////////////////////////////////////////////////////////////////////
-		//
+		//  dprintf("nb_devices=%d", nb_devices);
 		////if (nb_devices < 0)
-		//if (0==1)
 		//{
 		//	//if (!create_device) { toggle_create(FALSE); }
 		//	SetDlgItemTextU(hMainDialog, IDC_DEVICEEDIT, "hello world");
 		//	SetDlgItemTextA(hMainDialog, IDC_VID, "1A86");
 		//	SetDlgItemTextA(hMainDialog, IDC_PID, "5512");
 		//	SetDlgItemTextA(hMainDialog, IDC_MI, "01");
-		//}
-		//else
-		//{
-		//	dprintf("nb_devices=%d", nb_devices);
+		//  dprintf("nb_devices=%d", nb_devices);
 		//}
 		///////////////////////////////////////////////////////////////////////////////////
 
@@ -1859,9 +1850,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		DispatchMessage(&msg);
 	}
 
-	//dprintf("Scorch: safe_free(update.download_url);");
-	//safe_free(update.download_url);
-	//safe_free(update.release_notes);
 	dprintf("Scorch: FreeAllLibraries");
 	FreeAllLibraries();
 	dprintf("Scorch: CloseHandle(mutex);");
